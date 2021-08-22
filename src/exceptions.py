@@ -1,0 +1,2 @@
+class AllergyException(Exception):
+    pass
