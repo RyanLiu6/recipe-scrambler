@@ -1,6 +1,4 @@
-import os
-
-
+from mdutils.mdutils import MdUtils
 from recipe_scrapers import scrape_me
 
 
@@ -20,13 +18,13 @@ class Recipe:
         """
         scraped = scrape_me(recipe_url)
 
-        self.__check_ingredients(scraped)
-
         # Attributes to translate
         self.title = scraped.title()
         self.total_time = scraped.total_time()
         self.ingredients = scraped.ingredients()
         self.instructions = scraped.instructions().split("\n")
+
+        self.__check_ingredients()
 
         # Keep a copy for comparison's sake later
         self.original_title = self.title
@@ -61,50 +59,54 @@ class Recipe:
         self.__translate("EN-US")
 
     def write_to_disk(self, file_name=None):
-        """
-        Writes the recipe to a text file to disk.
-
-        Args:
-            file_name: Optional; File name to wrtie to.
-        """
         if not file_name:
-            file_name = f"Scrambled: {self.title}.txt"
+            file_name = f"Scrambled: {self.title}"
 
-        with open(file_name, "w", newline="") as write_file:
-            write_file.write(self.title)
-            write_file.write("\n\n\n")
+        md_file = MdUtils(file_name=file_name,title=self.title)
+        md_file.new_line(f"Total Cooking Time: {self.total_time}")
+        md_file.new_line()
 
-            write_file.write(self.total_time)
-            write_file.write("\n\n\n")
+        md_file.new_header(level=2, title="Ingredients")
+        table_values = ["Ingredient", "Additional Info"]
+        for item in self.ingredients:
+            table_values.extend([item.ingredient, item.additional_info])
+        md_file.new_line()
+        md_file.new_table(columns=2, rows=len(self.ingredients) + 1, text=table_values, text_align='center')
 
-            write_file.write("Ingredients:")
-            for item in self.ingredients:
-                write_file.write(f"{item}\n")
-            write_file.write("\n\n\n")
+        md_file.new_header(level=2, title="Instructions")
+        for i in range(len(self.instructions)):
+            md_file.new_line(f"{i + 1}: {self.instructions[i]}")
+        md_file.new_line()
 
-            write_file.write("Instructions:")
-            for item in self.instructions:
-                write_file.write(f"{item}\n")
-            write_file.write("\n\n\n")
+        md_file.new_table_of_contents(table_title='Contents', depth=2)
+        md_file.create_md_file()
 
     """ ================ Helper functions ================"""
-    def __check_ingredients(self, recipe):
-        # Check allergies
-        # for item in recipe.ingredients():
-        pass
+    def __check_ingredients(self):
+        parsed_ingredients = []
+
+        """
+        Here, we:
+        1. Check for allergies
+        2. Convert them into Ingredient objects
+        """
+        for item in self.ingredients:
+            parsed_ingredients.append(Ingredient(item))
+
+        self.ingredients = parsed_ingredients
 
     def __translate(self, language):
         title_time = self.translator.translate_batch([self.title, self.total_time], language)
         self.title = title_time[0].text
         self.total_time = title_time[1].text
 
-        ingredients = self.translator.translate_batch(self.ingredients, language)
-        translated_ingredients = [item.text for item in ingredients]
+        for item in self.ingredients:
+            result = self.translator.translate(item.ingredient, language)
+            item.ingredient = result.text
 
-        if len(self.ingredients) != len(translated_ingredients):
-            raise ValueError("Mismatched results for ingredients")
-
-        self.ingredients = translated_ingredients
+            if item.additional_info:
+                result = self.translator.translate(item.additional_info, language)
+                item.additional_info = result.text
 
         instructions = self.translator.translate_batch(self.instructions, language)
         translated_instructions = [item.text for item in instructions]
@@ -113,3 +115,18 @@ class Recipe:
             raise ValueError("Mismatched results for instructions")
 
         self.instructions = translated_instructions
+
+
+class Ingredient:
+    def __init__(self, input_text):
+        values = input_text.split(",")
+
+        for i in range(len(values)):
+            values[i] = values[i].strip()
+
+        self.ingredient = values[0]
+
+        if len(values) > 1:
+            self.additional_info = " ".join(values[1:])
+        else:
+            self.additional_info = ""
